@@ -3,7 +3,33 @@ const express = require("express");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+/* =========================
+   MIDDLEWARE
+========================= */
+
 app.use(express.json());
+
+/* =========================
+   CORS
+========================= */
+
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+  );
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET, POST, OPTIONS"
+  );
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
 
 /* =========================
    HOME
@@ -31,9 +57,7 @@ app.get("/health", (req, res) => {
 ========================= */
 
 app.post("/create-checkout", async (req, res) => {
-
   try {
-
     const {
       student_id,
       first_name,
@@ -44,11 +68,7 @@ app.post("/create-checkout", async (req, res) => {
 
     /* Check required information */
 
-    if (
-      !student_id ||
-      !first_name ||
-      !phone
-    ) {
+    if (!student_id || !first_name || !phone) {
       return res.status(400).json({
         status: "error",
         message: "Student information is required"
@@ -64,7 +84,7 @@ app.post("/create-checkout", async (req, res) => {
       });
     }
 
-    /* For our first test */
+    /* Payment amount */
 
     const paymentAmount = Number(amount);
 
@@ -75,7 +95,7 @@ app.post("/create-checkout", async (req, res) => {
       });
     }
 
-    /* Unique order reference */
+    /* Unique merchant reference */
 
     const merchantReference =
       "HG-" +
@@ -83,7 +103,9 @@ app.post("/create-checkout", async (req, res) => {
       "-" +
       Date.now();
 
-    /* Send payment request to Chapa */
+    /* =========================
+       CHAPA PAYMENT REQUEST
+    ========================= */
 
     const chapaResponse = await fetch(
       "https://api.chapa.global/v2/payments/hosted",
@@ -99,7 +121,6 @@ app.post("/create-checkout", async (req, res) => {
         },
 
         body: JSON.stringify({
-
           amount: paymentAmount,
 
           currency: "ETB",
@@ -108,7 +129,6 @@ app.post("/create-checkout", async (req, res) => {
             merchantReference,
 
           customer: {
-
             first_name:
               first_name,
 
@@ -117,22 +137,20 @@ app.post("/create-checkout", async (req, res) => {
 
             phone_number:
               phone
-
           },
 
           meta: {
-
             student_id:
               student_id,
 
             source:
               "HG-system-school"
-
           }
-
         })
       }
     );
+
+    /* Read Chapa response */
 
     const data =
       await chapaResponse.json();
@@ -142,14 +160,14 @@ app.post("/create-checkout", async (req, res) => {
       data
     );
 
-    /* Chapa error */
+    /* =========================
+       CHAPA ERROR
+    ========================= */
 
     if (!chapaResponse.ok) {
-
       return res.status(
         chapaResponse.status
       ).json({
-
         status: "error",
 
         message:
@@ -158,20 +176,18 @@ app.post("/create-checkout", async (req, res) => {
 
         chapa:
           data
-
       });
-
     }
 
-    /* Get checkout URL */
+    /* =========================
+       GET CHECKOUT URL
+    ========================= */
 
     const checkoutUrl =
       data?.data?.checkout_url;
 
     if (!checkoutUrl) {
-
       return res.status(500).json({
-
         status: "error",
 
         message:
@@ -179,15 +195,14 @@ app.post("/create-checkout", async (req, res) => {
 
         chapa:
           data
-
       });
-
     }
 
-    /* Send checkout URL to website */
+    /* =========================
+       SEND URL TO FRONTEND
+    ========================= */
 
     return res.json({
-
       status: "success",
 
       checkout_url:
@@ -195,27 +210,21 @@ app.post("/create-checkout", async (req, res) => {
 
       merchant_reference:
         merchantReference
-
     });
 
   } catch (error) {
-
     console.error(
       "Create checkout error:",
       error
     );
 
     return res.status(500).json({
-
       status: "error",
 
       message:
         "Server error while creating payment"
-
     });
-
   }
-
 });
 
 /* =========================
@@ -223,9 +232,7 @@ app.post("/create-checkout", async (req, res) => {
 ========================= */
 
 app.listen(PORT, () => {
-
   console.log(
     `HG system server running on port ${PORT}`
   );
-
 });
