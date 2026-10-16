@@ -169,7 +169,9 @@ app.post("/create-checkout", async (req, res) => {
       currency
     } = req.body;
 
-    /* Check required information */
+    /* =========================
+       REQUIRED INFORMATION
+    ========================= */
 
     if (
       !student_id ||
@@ -197,8 +199,7 @@ app.post("/create-checkout", async (req, res) => {
     if (!student) {
       return res.status(404).json({
         status: "error",
-        message:
-          "Student ID or name is incorrect"
+        message: "Student ID or name is incorrect"
       });
     }
 
@@ -217,8 +218,7 @@ app.post("/create-checkout", async (req, res) => {
        PAYMENT AMOUNT
     ========================= */
 
-    const paymentAmount =
-      Number(amount);
+    const paymentAmount = Number(amount);
 
     if (
       !paymentAmount ||
@@ -231,79 +231,107 @@ app.post("/create-checkout", async (req, res) => {
     }
 
     /* =========================
+       PHONE FORMAT
+       Chapa V2 requires
+       international format
+    ========================= */
+
+    let customerPhone =
+      String(phone).trim();
+
+    if (
+      customerPhone.startsWith("0")
+    ) {
+      customerPhone =
+        "+251" +
+        customerPhone.substring(1);
+    }
+
+    /* =========================
        MERCHANT REFERENCE
+
+       IMPORTANT:
+       Keep this short and unique.
     ========================= */
 
     const merchantReference =
-      "HG-" +
+      "HG" +
       student.id +
-      "-" +
-      Date.now();
+      Date.now().toString().slice(-10);
 
     /* =========================
-       CHAPA PAYMENT REQUEST
+       CHECK SECRET KEY
     ========================= */
 
-    const chapaResponse =
-      await fetch(
-        "https://api.chapa.global/v2/payments/hosted",
-        {
-          method: "POST",
-
-          headers: {
-            "Authorization":
-              `Bearer ${process.env.CHAPA_SECRET_KEY}`,
-
-            "Content-Type":
-              "application/json"
-          },
-
-          body: JSON.stringify({
-
-            amount:
-              paymentAmount,
-
-            currency:
-              "ETB",
-
-            merchant_reference:
-              merchantReference,
-
-            customer: {
-
-              first_name:
-                student.name,
-
-              last_name:
-                "Student",
-
-              phone_number:
-                phone
-
-            },
-
-            meta: {
-
-              student_id:
-                student.id,
-
-              student_name:
-                student.name,
-
-              grade:
-                student.grade,
-
-              source:
-                "HG-system-school"
-
-            }
-
-          })
-        }
+    if (!process.env.CHAPA_SECRET_KEY) {
+      console.error(
+        "CHAPA_SECRET_KEY is missing"
       );
 
+      return res.status(500).json({
+        status: "error",
+        message: "Chapa secret key is not configured"
+      });
+    }
+
     /* =========================
-       CHAPA RESPONSE
+       CHAPA V2 HOSTED CHECKOUT
+    ========================= */
+
+    const chapaResponse = await fetch(
+      "https://api.chapa.global/v2/payments/hosted",
+      {
+        method: "POST",
+
+        headers: {
+          "Authorization":
+            `Bearer ${process.env.CHAPA_SECRET_KEY}`,
+
+          "Content-Type":
+            "application/json",
+
+          "Accept":
+            "application/json"
+        },
+
+        body: JSON.stringify({
+          amount: paymentAmount,
+
+          currency: "ETB",
+
+          merchant_reference:
+            merchantReference,
+
+          customer: {
+            first_name:
+              student.name,
+
+            last_name:
+              "Student",
+
+            phone_number:
+              customerPhone
+          },
+
+          meta: {
+            student_id:
+              student.id,
+
+            student_name:
+              student.name,
+
+            grade:
+              student.grade,
+
+            source:
+              "HG-system-school"
+          }
+        })
+      }
+    );
+
+    /* =========================
+       READ CHAPA RESPONSE
     ========================= */
 
     const data =
@@ -311,7 +339,7 @@ app.post("/create-checkout", async (req, res) => {
 
     console.log(
       "Chapa response:",
-      data
+      JSON.stringify(data)
     );
 
     /* =========================
@@ -322,22 +350,19 @@ app.post("/create-checkout", async (req, res) => {
       return res.status(
         chapaResponse.status
       ).json({
-
-        status:
-          "error",
+        status: "error",
 
         message:
-          data.message ||
+          data?.message ||
+          data?.error?.message ||
           "Chapa payment initialization failed",
 
-        chapa:
-          data
-
+        chapa: data
       });
     }
 
     /* =========================
-       CHECKOUT URL
+       GET CHECKOUT URL
     ========================= */
 
     const checkoutUrl =
@@ -345,27 +370,24 @@ app.post("/create-checkout", async (req, res) => {
 
     if (!checkoutUrl) {
       return res.status(500).json({
-
-        status:
-          "error",
+        status: "error",
 
         message:
           "Chapa did not return checkout URL",
 
-        chapa:
-          data
-
+        chapa: data
       });
     }
 
     /* =========================
-       SEND CHECKOUT URL
+       SUCCESS
     ========================= */
 
     return res.json({
+      status: "success",
 
-      status:
-        "success",
+      message:
+        "Payment initialized successfully",
 
       checkout_url:
         checkoutUrl,
@@ -374,7 +396,6 @@ app.post("/create-checkout", async (req, res) => {
         merchantReference,
 
       student: {
-
         id:
           student.id,
 
@@ -383,9 +404,7 @@ app.post("/create-checkout", async (req, res) => {
 
         grade:
           student.grade
-
       }
-
     });
 
   } catch (error) {
@@ -396,15 +415,14 @@ app.post("/create-checkout", async (req, res) => {
     );
 
     return res.status(500).json({
-
-      status:
-        "error",
+      status: "error",
 
       message:
-        "Server error while creating payment"
+        "Server error while creating payment",
 
+      error:
+        error.message
     });
-
   }
 });
 
@@ -413,9 +431,7 @@ app.post("/create-checkout", async (req, res) => {
 ========================= */
 
 app.listen(PORT, () => {
-
   console.log(
     `HG system server running on port ${PORT}`
   );
-
 });
