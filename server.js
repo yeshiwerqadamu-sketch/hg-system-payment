@@ -32,6 +32,53 @@ app.use((req, res, next) => {
 });
 
 /* =========================
+   TEST STUDENTS
+========================= */
+
+const students = [
+  {
+    id: "zzxx",
+    name: "ኪሩቤል አመስግን",
+    grade: "1"
+  },
+  {
+    id: "ccvv",
+    name: "አለማየሁ ሰላም",
+    grade: "2"
+  },
+  {
+    id: "bbnn",
+    name: "ሰላም አያሌው",
+    grade: "3"
+  },
+  {
+    id: "hhjj",
+    name: "ሰራዊት ጌታሁን",
+    grade: "4"
+  },
+  {
+    id: "vvyy",
+    name: "አህመድ ኑረዲን",
+    grade: "5"
+  },
+  {
+    id: "zzee",
+    name: "የአብ ሥራ መሰረት",
+    grade: "6"
+  },
+  {
+    id: "mmyy",
+    name: "ሀብታሙ ጎሃፅባህ",
+    grade: "7"
+  },
+  {
+    id: "ggzz",
+    name: "አለሙአየለ",
+    grade: "8"
+  }
+];
+
+/* =========================
    HOME
 ========================= */
 
@@ -53,6 +100,62 @@ app.get("/health", (req, res) => {
 });
 
 /* =========================
+   VERIFY STUDENT
+========================= */
+
+app.post("/verify-student", (req, res) => {
+  try {
+    const {
+      student_id,
+      first_name
+    } = req.body;
+
+    if (!student_id || !first_name) {
+      return res.status(400).json({
+        status: "error",
+        message: "Student ID and name are required"
+      });
+    }
+
+    const student = students.find(
+      (item) =>
+        item.id.toLowerCase() ===
+          String(student_id).trim().toLowerCase() &&
+        item.name.trim() ===
+          String(first_name).trim()
+    );
+
+    if (!student) {
+      return res.status(404).json({
+        status: "error",
+        message: "Student information is incorrect"
+      });
+    }
+
+    return res.json({
+      status: "success",
+      message: "Student verified successfully",
+      student: {
+        id: student.id,
+        name: student.name,
+        grade: student.grade
+      }
+    });
+
+  } catch (error) {
+    console.error(
+      "Student verification error:",
+      error
+    );
+
+    return res.status(500).json({
+      status: "error",
+      message: "Server error"
+    });
+  }
+});
+
+/* =========================
    CREATE CHAPA CHECKOUT
 ========================= */
 
@@ -68,14 +171,40 @@ app.post("/create-checkout", async (req, res) => {
 
     /* Check required information */
 
-    if (!student_id || !first_name || !phone) {
+    if (
+      !student_id ||
+      !first_name ||
+      !phone
+    ) {
       return res.status(400).json({
         status: "error",
         message: "Student information is required"
       });
     }
 
-    /* Only allow ETB */
+    /* =========================
+       VERIFY STUDENT
+    ========================= */
+
+    const student = students.find(
+      (item) =>
+        item.id.toLowerCase() ===
+          String(student_id).trim().toLowerCase() &&
+        item.name.trim() ===
+          String(first_name).trim()
+    );
+
+    if (!student) {
+      return res.status(404).json({
+        status: "error",
+        message:
+          "Student ID or name is incorrect"
+      });
+    }
+
+    /* =========================
+       CHECK CURRENCY
+    ========================= */
 
     if (currency !== "ETB") {
       return res.status(400).json({
@@ -84,22 +213,30 @@ app.post("/create-checkout", async (req, res) => {
       });
     }
 
-    /* Payment amount */
+    /* =========================
+       PAYMENT AMOUNT
+    ========================= */
 
-    const paymentAmount = Number(amount);
+    const paymentAmount =
+      Number(amount);
 
-    if (!paymentAmount || paymentAmount <= 0) {
+    if (
+      !paymentAmount ||
+      paymentAmount <= 0
+    ) {
       return res.status(400).json({
         status: "error",
         message: "Invalid payment amount"
       });
     }
 
-    /* Unique merchant reference */
+    /* =========================
+       MERCHANT REFERENCE
+    ========================= */
 
     const merchantReference =
       "HG-" +
-      student_id +
+      student.id +
       "-" +
       Date.now();
 
@@ -107,50 +244,67 @@ app.post("/create-checkout", async (req, res) => {
        CHAPA PAYMENT REQUEST
     ========================= */
 
-    const chapaResponse = await fetch(
-      "https://api.chapa.global/v2/payments/hosted",
-      {
-        method: "POST",
+    const chapaResponse =
+      await fetch(
+        "https://api.chapa.global/v2/payments/hosted",
+        {
+          method: "POST",
 
-        headers: {
-          "Authorization":
-            `Bearer ${process.env.CHAPA_SECRET_KEY}`,
+          headers: {
+            "Authorization":
+              `Bearer ${process.env.CHAPA_SECRET_KEY}`,
 
-          "Content-Type":
-            "application/json"
-        },
-
-        body: JSON.stringify({
-          amount: paymentAmount,
-
-          currency: "ETB",
-
-          merchant_reference:
-            merchantReference,
-
-          customer: {
-            first_name:
-              first_name,
-
-            last_name:
-              "Student",
-
-            phone_number:
-              phone
+            "Content-Type":
+              "application/json"
           },
 
-          meta: {
-            student_id:
-              student_id,
+          body: JSON.stringify({
 
-            source:
-              "HG-system-school"
-          }
-        })
-      }
-    );
+            amount:
+              paymentAmount,
 
-    /* Read Chapa response */
+            currency:
+              "ETB",
+
+            merchant_reference:
+              merchantReference,
+
+            customer: {
+
+              first_name:
+                student.name,
+
+              last_name:
+                "Student",
+
+              phone_number:
+                phone
+
+            },
+
+            meta: {
+
+              student_id:
+                student.id,
+
+              student_name:
+                student.name,
+
+              grade:
+                student.grade,
+
+              source:
+                "HG-system-school"
+
+            }
+
+          })
+        }
+      );
+
+    /* =========================
+       CHAPA RESPONSE
+    ========================= */
 
     const data =
       await chapaResponse.json();
@@ -168,7 +322,9 @@ app.post("/create-checkout", async (req, res) => {
       return res.status(
         chapaResponse.status
       ).json({
-        status: "error",
+
+        status:
+          "error",
 
         message:
           data.message ||
@@ -176,11 +332,12 @@ app.post("/create-checkout", async (req, res) => {
 
         chapa:
           data
+
       });
     }
 
     /* =========================
-       GET CHECKOUT URL
+       CHECKOUT URL
     ========================= */
 
     const checkoutUrl =
@@ -188,42 +345,66 @@ app.post("/create-checkout", async (req, res) => {
 
     if (!checkoutUrl) {
       return res.status(500).json({
-        status: "error",
+
+        status:
+          "error",
 
         message:
           "Chapa did not return checkout URL",
 
         chapa:
           data
+
       });
     }
 
     /* =========================
-       SEND URL TO FRONTEND
+       SEND CHECKOUT URL
     ========================= */
 
     return res.json({
-      status: "success",
+
+      status:
+        "success",
 
       checkout_url:
         checkoutUrl,
 
       merchant_reference:
-        merchantReference
+        merchantReference,
+
+      student: {
+
+        id:
+          student.id,
+
+        name:
+          student.name,
+
+        grade:
+          student.grade
+
+      }
+
     });
 
   } catch (error) {
+
     console.error(
       "Create checkout error:",
       error
     );
 
     return res.status(500).json({
-      status: "error",
+
+      status:
+        "error",
 
       message:
         "Server error while creating payment"
+
     });
+
   }
 });
 
@@ -232,7 +413,9 @@ app.post("/create-checkout", async (req, res) => {
 ========================= */
 
 app.listen(PORT, () => {
+
   console.log(
     `HG system server running on port ${PORT}`
   );
+
 });
