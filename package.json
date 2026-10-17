@@ -1,7 +1,7 @@
 {
   "name": "hg-system-payment",
   "version": "1.0.0",
-  "description": "HG system school Telebirr payment backend",
+  "description": "HG system school payment backend",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -9,6 +9,7 @@
   "dependencies": {
     "express": "^4.21.2",
     "dotenv": "^16.4.7",
-    "axios": "^1.7.9"
+    "axios": "^1.7.9",
+    "pg": "^8.16.3"
   }
 }
