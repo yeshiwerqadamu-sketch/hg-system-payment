@@ -1,40 +1,18 @@
 const express = require("express");
+const cors = require("cors");
+const axios = require("axios");
 const { Pool } = require("pg");
+require("dotenv").config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.use(cors());
 app.use(express.json());
-
-/* =========================
-   CORS
-========================= */
-
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header(
-    "Access-Control-Allow-Headers",
-    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
-  );
-  res.header(
-    "Access-Control-Allow-Methods",
-    "GET, POST, OPTIONS"
-  );
-
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
-
-  next();
-});
 
 /* =========================
    DATABASE
 ========================= */
-
-if (!process.env.DATABASE_URL) {
-  console.error("DATABASE_URL is missing");
-}
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -48,31 +26,59 @@ const pool = new Pool({
 ========================= */
 
 const students = [
-  { id: "zzxx", name: "ኪሩቤል አመስግን", grade: "1" },
-  { id: "ccvv", name: "አለማየሁ ሰላም", grade: "2" },
-  { id: "bbnn", name: "ሰላም አያሌው", grade: "3" },
-  { id: "hhjj", name: "ሰራዊት ጌታሁን", grade: "4" },
-  { id: "vvyy", name: "አህመድ ኑረዲን", grade: "5" },
-  { id: "zzee", name: "የአብ ሥራ መሰረት", grade: "6" },
-  { id: "mmyy", name: "ሀብታሙ ጎሃፅባህ", grade: "7" },
-  { id: "ggzz", name: "አለሙአየለ", grade: "8" }
+  {
+    id: "zzxx",
+    name: "ኪሩቤል አመስግን",
+    grade: 1
+  },
+  {
+    id: "ccvv",
+    name: "አለማየሁ ሰላም",
+    grade: 2
+  },
+  {
+    id: "bbnn",
+    name: "ሰላም አያሌው",
+    grade: 3
+  },
+  {
+    id: "hhjj",
+    name: "ሰራዊት ጌታሁን",
+    grade: 4
+  },
+  {
+    id: "vvyy",
+    name: "አህመድ ኑረዲን",
+    grade: 5
+  },
+  {
+    id: "zzee",
+    name: "የአብ ሥራ መሰረት",
+    grade: 6
+  },
+  {
+    id: "mmyy",
+    name: "ሀብታሙ ጎሃፅባህ",
+    grade: 7
+  },
+  {
+    id: "ggzz",
+    name: "አለሙአየለ",
+    grade: 8
+  }
 ];
 
 /* =========================
-   CREATE DATABASE TABLES
+   DATABASE INITIALIZATION
 ========================= */
 
 async function initializeDatabase() {
-  if (!process.env.DATABASE_URL) {
-    return;
-  }
-
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS students (
         id VARCHAR(50) PRIMARY KEY,
         name TEXT NOT NULL,
-        grade VARCHAR(20) NOT NULL,
+        grade INTEGER NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -82,14 +88,14 @@ async function initializeDatabase() {
         id SERIAL PRIMARY KEY,
         student_id VARCHAR(50) NOT NULL,
         student_name TEXT NOT NULL,
-        grade VARCHAR(20) NOT NULL,
+        grade INTEGER NOT NULL,
         amount NUMERIC(12,2) NOT NULL,
-        currency VARCHAR(10) NOT NULL DEFAULT 'ETB',
-        merchant_reference VARCHAR(150) UNIQUE NOT NULL,
-        status VARCHAR(30) NOT NULL DEFAULT 'pending',
-        payment_month VARCHAR(20),
+        currency VARCHAR(10) DEFAULT 'ETB',
+        merchant_reference VARCHAR(100) UNIQUE NOT NULL,
+        status VARCHAR(30) DEFAULT 'pending',
+        payment_month VARCHAR(7) NOT NULL,
         phone VARCHAR(30),
-        chapa_reference VARCHAR(150),
+        chapa_reference VARCHAR(100),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         paid_at TIMESTAMP
       )
@@ -111,7 +117,7 @@ async function initializeDatabase() {
 
     console.log("Database initialized successfully");
   } catch (error) {
-    console.error("Database initialization error:", error);
+    console.error("Database initialization error:", error.message);
   }
 }
 
@@ -123,7 +129,7 @@ app.get("/", (req, res) => {
   res.json({
     status: "success",
     message: "HG system school payment backend is running",
-    version: "3.0"
+    version: "4.0"
   });
 });
 
@@ -153,47 +159,35 @@ app.get("/health", async (req, res) => {
    VERIFY STUDENT
 ========================= */
 
-app.post("/verify-student", async (req, res) => {
+app.get("/verify-student/:studentId", async (req, res) => {
   try {
-    const { student_id, first_name } = req.body;
-
-    if (!student_id || !first_name) {
-      return res.status(400).json({
-        status: "error",
-        message: "Student ID and name are required"
-      });
-    }
+    const studentId = req.params.studentId.trim().toLowerCase();
 
     const result = await pool.query(
       `
       SELECT id, name, grade
       FROM students
       WHERE LOWER(id) = LOWER($1)
-      AND name = $2
       `,
-      [
-        String(student_id).trim(),
-        String(first_name).trim()
-      ]
+      [studentId]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
         status: "error",
-        message: "Student information is incorrect"
+        message: "Student not found"
       });
     }
 
-    return res.json({
+    res.json({
       status: "success",
-      message: "Student verified successfully",
       student: result.rows[0]
     });
 
   } catch (error) {
-    console.error("Student verification error:", error);
+    console.error("Verify student error:", error.message);
 
-    return res.status(500).json({
+    res.status(500).json({
       status: "error",
       message: "Server error"
     });
@@ -208,16 +202,28 @@ app.post("/create-checkout", async (req, res) => {
   try {
     const {
       student_id,
-      first_name,
-      phone,
       amount,
-      currency
+      phone
     } = req.body;
 
-    if (!student_id || !first_name || !phone) {
+    if (!student_id) {
       return res.status(400).json({
         status: "error",
-        message: "Student information is required"
+        message: "Student ID is required"
+      });
+    }
+
+    if (!amount || Number(amount) <= 0) {
+      return res.status(400).json({
+        status: "error",
+        message: "Valid amount is required"
+      });
+    }
+
+    if (!phone) {
+      return res.status(400).json({
+        status: "error",
+        message: "Phone number is required"
       });
     }
 
@@ -226,131 +232,103 @@ app.post("/create-checkout", async (req, res) => {
       SELECT id, name, grade
       FROM students
       WHERE LOWER(id) = LOWER($1)
-      AND name = $2
       `,
-      [
-        String(student_id).trim(),
-        String(first_name).trim()
-      ]
+      [student_id]
     );
 
     if (studentResult.rows.length === 0) {
       return res.status(404).json({
         status: "error",
-        message: "Student ID or name is incorrect"
+        message: "Student not found"
       });
     }
 
     const student = studentResult.rows[0];
 
-    if (currency !== "ETB") {
-      return res.status(400).json({
-        status: "error",
-        message: "Currency must be ETB"
-      });
+    /* =========================
+       PHONE NORMALIZATION
+    ========================= */
+
+    let normalizedPhone = String(phone).trim();
+
+    if (normalizedPhone.startsWith("0")) {
+      normalizedPhone = "+251" + normalizedPhone.substring(1);
     }
 
-    const paymentAmount = Number(amount);
-
-    if (!paymentAmount || paymentAmount <= 0) {
-      return res.status(400).json({
-        status: "error",
-        message: "Invalid payment amount"
-      });
+    if (normalizedPhone.startsWith("251")) {
+      normalizedPhone = "+" + normalizedPhone;
     }
 
-    let customerPhone = String(phone).trim();
-
-    if (customerPhone.startsWith("0")) {
-      customerPhone = "+251" + customerPhone.substring(1);
-    }
+    /* =========================
+       MERCHANT REFERENCE
+    ========================= */
 
     const merchantReference =
       "HG" +
       student.id +
       Date.now().toString().slice(-10);
 
-    if (!process.env.CHAPA_SECRET_KEY) {
-      return res.status(500).json({
-        status: "error",
-        message: "Chapa secret key is not configured"
-      });
-    }
+    const paymentMonth =
+      new Date().toISOString().slice(0, 7);
 
     /* =========================
-       CREATE CHAPA PAYMENT
+       CHAPA REQUEST
     ========================= */
 
-    const chapaResponse = await fetch(
+    const chapaResponse = await axios.post(
       "https://api.chapa.global/v2/payments/hosted",
       {
-        method: "POST",
+        amount: Number(amount),
+        currency: "ETB",
 
+        first_name: student.name,
+        last_name: "Student",
+
+        phone_number: normalizedPhone,
+
+        tx_ref: merchantReference,
+
+        callback_url:
+          "https://hg-system-payment.onrender.com/payment-success",
+
+        return_url:
+          "https://hg-system-payment.onrender.com/payment-success",
+
+        customization: {
+          title: "HG System School",
+          description: "School monthly payment"
+        }
+      },
+      {
         headers: {
           Authorization:
             `Bearer ${process.env.CHAPA_SECRET_KEY}`,
-          "Content-Type": "application/json",
-          Accept: "application/json"
-        },
 
-        body: JSON.stringify({
-          amount: paymentAmount,
-          currency: "ETB",
-
-          merchant_reference:
-            merchantReference,
-
-          customer: {
-            first_name: student.name,
-            last_name: "Student",
-            phone_number: customerPhone
-          },
-
-          meta: {
-            student_id: student.id,
-            student_name: student.name,
-            grade: student.grade,
-            source: "HG-system-school"
-          }
-        })
+          "Content-Type":
+            "application/json"
+        }
       }
     );
 
-    const data = await chapaResponse.json();
-
-    console.log(
-      "Chapa response:",
-      JSON.stringify(data)
-    );
-
-    if (!chapaResponse.ok) {
-      return res.status(chapaResponse.status).json({
-        status: "error",
-        message:
-          data?.message ||
-          data?.error?.message ||
-          "Chapa payment initialization failed",
-        chapa: data
-      });
-    }
-
     const checkoutUrl =
-      data?.data?.checkout_url;
+      chapaResponse.data?.data?.checkout_url;
 
     if (!checkoutUrl) {
+      console.error(
+        "Chapa response:",
+        chapaResponse.data
+      );
+
       return res.status(500).json({
         status: "error",
         message: "Chapa did not return checkout URL",
-        chapa: data
+        chapa: chapaResponse.data
       });
     }
 
     /* =========================
        SAVE PENDING PAYMENT
     ========================= */
-
-    const paymentMonth =
-      new Date().toISOString().slice(0, 7);
 
     await pool.query(
       `
@@ -371,43 +349,38 @@ app.post("/create-checkout", async (req, res) => {
         student.id,
         student.name,
         student.grade,
-        paymentAmount,
+        Number(amount),
         "ETB",
         merchantReference,
         "pending",
         paymentMonth,
-        customerPhone
+        normalizedPhone
       ]
     );
 
-    return res.json({
+    res.json({
       status: "success",
-      message: "Payment initialized successfully",
-
-      checkout_url:
-        checkoutUrl,
-
-      merchant_reference:
-        merchantReference,
-
+      message: "Checkout created",
       student: {
         id: student.id,
         name: student.name,
         grade: student.grade
-      }
+      },
+      merchant_reference: merchantReference,
+      checkout_url: checkoutUrl
     });
 
   } catch (error) {
     console.error(
       "Create checkout error:",
-      error
+      error.response?.data || error.message
     );
 
-    return res.status(500).json({
+    res.status(500).json({
       status: "error",
-      message:
-        "Server error while creating payment",
-      error: error.message
+      message: "Unable to create Chapa checkout",
+      details:
+        error.response?.data || error.message
     });
   }
 });
@@ -419,69 +392,44 @@ app.post("/create-checkout", async (req, res) => {
 app.get(
   "/verify-payment/:reference",
   async (req, res) => {
-
     try {
+      const reference =
+        req.params.reference.trim();
 
-      const { reference } = req.params;
-
-      if (!reference) {
-        return res.status(400).json({
-          status: "error",
-          message: "Payment reference is required"
-        });
-      }
-
-      if (!process.env.CHAPA_SECRET_KEY) {
-        return res.status(500).json({
-          status: "error",
-          message:
-            "Chapa secret key is not configured"
-        });
-      }
-
-      const chapaResponse = await fetch(
+      const chapaResponse = await axios.get(
         `https://api.chapa.global/v2/payments/${encodeURIComponent(reference)}/verify`,
         {
-          method: "GET",
-
           headers: {
             Authorization:
               `Bearer ${process.env.CHAPA_SECRET_KEY}`,
 
             "Content-Type":
-              "application/json",
-
-            Accept:
               "application/json"
           }
         }
       );
 
-      const data =
-        await chapaResponse.json();
+      const payment =
+        chapaResponse.data?.data;
 
-      console.log(
-        "Chapa verification:",
-        JSON.stringify(data)
-      );
-
-      if (!chapaResponse.ok) {
-        return res.status(chapaResponse.status).json({
+      if (!payment) {
+        return res.status(404).json({
           status: "error",
-          message:
-            data?.message ||
-            "Payment verification failed",
-          chapa: data
+          message: "Payment information not found"
         });
       }
 
-      const payment = data?.data;
-
       /* =========================
-         PAYMENT SUCCESS
+         IMPORTANT:
+         CHAPA RETURNS "SUCCESS"
+         IN UPPERCASE
       ========================= */
 
-      if (payment?.status === "success") {
+      const isSuccessful =
+        String(payment.status).toUpperCase() ===
+        "SUCCESS";
+
+      if (isSuccessful) {
 
         const updateResult =
           await pool.query(
@@ -495,25 +443,28 @@ app.get(
             RETURNING *
             `,
             [
-              reference,
-              reference
+              payment.chapa_reference ||
+                reference,
+
+              payment.merchant_reference
             ]
           );
+
+        if (updateResult.rows.length === 0) {
+          return res.status(404).json({
+            status: "error",
+            message:
+              "Payment verified by Chapa, but local payment record was not found",
+            payment
+          });
+        }
 
         return res.json({
           status: "success",
           paid: true,
-          message:
-            "Payment verified and saved successfully",
-
-          payment: payment,
-
-          database: {
-            updated:
-              updateResult.rowCount > 0,
-            record:
-              updateResult.rows[0] || null
-          }
+          message: "Payment verified successfully",
+          payment,
+          database: updateResult.rows[0]
         });
       }
 
@@ -524,88 +475,183 @@ app.get(
       await pool.query(
         `
         UPDATE payments
-        SET status = 'failed'
-        WHERE merchant_reference = $1
-        AND status != 'paid'
+        SET
+          status = 'failed',
+          chapa_reference = $1
+        WHERE merchant_reference = $2
+          AND status <> 'paid'
         `,
-        [reference]
+        [
+          payment.chapa_reference ||
+            reference,
+
+          payment.merchant_reference
+        ]
       );
 
       return res.json({
         status: "success",
         paid: false,
-        message:
-          "Payment is not successful",
-        payment: payment
+        message: "Payment is not successful",
+        payment
       });
 
     } catch (error) {
-
       console.error(
         "Payment verification error:",
-        error
+        error.response?.data ||
+          error.message
       );
 
-      return res.status(500).json({
+      res.status(500).json({
         status: "error",
-        message:
-          "Server error while verifying payment"
+        message: "Payment verification failed",
+        details:
+          error.response?.data ||
+          error.message
       });
     }
   }
 );
 
 /* =========================
-   GET STUDENT PAYMENT STATUS
+   PAYMENT SUCCESS PAGE
+========================= */
+
+app.get("/payment-success", (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+
+      <title>HG System Payment</title>
+
+      <style>
+        body {
+          margin: 0;
+          min-height: 100vh;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          background:
+            linear-gradient(
+              135deg,
+              #062e2e,
+              #0b4f4f,
+              #061f1f
+            );
+          font-family: Arial, sans-serif;
+          color: white;
+        }
+
+        .box {
+          width: 90%;
+          max-width: 420px;
+          padding: 35px;
+          text-align: center;
+          border-radius: 25px;
+          background: rgba(255,255,255,.10);
+          border: 1px solid rgba(255,255,255,.18);
+          backdrop-filter: blur(20px);
+          box-shadow:
+            0 20px 60px rgba(0,0,0,.35);
+        }
+
+        .icon {
+          font-size: 70px;
+          margin-bottom: 15px;
+        }
+
+        h1 {
+          margin-bottom: 10px;
+        }
+
+        p {
+          opacity: .85;
+          line-height: 1.6;
+        }
+
+        .btn {
+          display: inline-block;
+          margin-top: 20px;
+          padding: 13px 25px;
+          border-radius: 12px;
+          background: #00d084;
+          color: white;
+          text-decoration: none;
+          font-weight: bold;
+        }
+      </style>
+    </head>
+
+    <body>
+
+      <div class="box">
+
+        <div class="icon">⏳</div>
+
+        <h1>Payment Received</h1>
+
+        <p>
+          Your payment was returned from Chapa.
+        </p>
+
+        <p>
+          The school system will verify the
+          payment before marking it as paid.
+        </p>
+
+        <a class="btn"
+          href="https://hg-system-payment.onrender.com/students">
+          View Students
+        </a>
+
+      </div>
+
+    </body>
+    </html>
+  `);
+});
+
+/* =========================
+   GET STUDENT PAYMENTS
 ========================= */
 
 app.get(
   "/student/:studentId/payments",
   async (req, res) => {
-
     try {
+      const studentId =
+        req.params.studentId.trim();
 
-      const { studentId } = req.params;
+      const result = await pool.query(
+        `
+        SELECT *
+        FROM payments
+        WHERE LOWER(student_id) = LOWER($1)
+        ORDER BY created_at DESC
+        `,
+        [studentId]
+      );
 
-      const result =
-        await pool.query(
-          `
-          SELECT
-            student_id,
-            student_name,
-            grade,
-            amount,
-            currency,
-            payment_month,
-            status,
-            merchant_reference,
-            chapa_reference,
-            created_at,
-            paid_at
-          FROM payments
-          WHERE LOWER(student_id) = LOWER($1)
-          ORDER BY created_at DESC
-          `,
-          [studentId]
-        );
-
-      return res.json({
+      res.json({
         status: "success",
         student_id: studentId,
         payments: result.rows
       });
 
     } catch (error) {
-
       console.error(
-        "Student payment status error:",
-        error
+        "Student payments error:",
+        error.message
       );
 
-      return res.status(500).json({
+      res.status(500).json({
         status: "error",
-        message:
-          "Server error while getting payment status"
+        message: "Server error"
       });
     }
   }
@@ -616,7 +662,6 @@ app.get(
 ========================= */
 
 app.get("/students", async (req, res) => {
-
   try {
 
     const result = await pool.query(`
@@ -624,42 +669,98 @@ app.get("/students", async (req, res) => {
         s.id,
         s.name,
         s.grade,
+
         COALESCE(
           (
             SELECT p.status
             FROM payments p
             WHERE p.student_id = s.id
+              AND p.payment_month =
+                  TO_CHAR(
+                    CURRENT_DATE,
+                    'YYYY-MM'
+                  )
             ORDER BY p.created_at DESC
             LIMIT 1
           ),
           'not_paid'
         ) AS payment_status
+
       FROM students s
-      ORDER BY CAST(s.grade AS INTEGER), s.name
+      ORDER BY s.grade ASC
     `);
 
-    return res.json({
+    res.json({
       status: "success",
       students: result.rows
     });
 
   } catch (error) {
-
     console.error(
-      "Get students error:",
-      error
+      "Students error:",
+      error.message
     );
 
-    return res.status(500).json({
+    res.status(500).json({
       status: "error",
-      message:
-        "Server error while getting students"
+      message: "Unable to load students"
     });
   }
 });
 
 /* =========================
-   START SERVER
+   GET MONTHLY PAYMENTS
+========================= */
+
+app.get("/payments/month/:month", async (req, res) => {
+  try {
+
+    const month = req.params.month;
+
+    const result = await pool.query(
+      `
+      SELECT
+        student_id,
+        student_name,
+        grade,
+        amount,
+        currency,
+        merchant_reference,
+        status,
+        payment_month,
+        phone,
+        chapa_reference,
+        created_at,
+        paid_at
+      FROM payments
+      WHERE payment_month = $1
+      ORDER BY grade ASC, student_name ASC
+      `,
+      [month]
+    );
+
+    res.json({
+      status: "success",
+      month,
+      payments: result.rows
+    });
+
+  } catch (error) {
+
+    console.error(
+      "Monthly payments error:",
+      error.message
+    );
+
+    res.status(500).json({
+      status: "error",
+      message: "Unable to load monthly payments"
+    });
+  }
+});
+
+/* =========================
+   SERVER START
 ========================= */
 
 app.listen(PORT, async () => {
