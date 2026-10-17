@@ -3,10 +3,6 @@ const express = require("express");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-/* =========================
-   MIDDLEWARE
-========================= */
-
 app.use(express.json());
 
 /* =========================
@@ -32,7 +28,7 @@ app.use((req, res, next) => {
 });
 
 /* =========================
-   TEST STUDENTS
+   STUDENTS
 ========================= */
 
 const students = [
@@ -85,7 +81,8 @@ const students = [
 app.get("/", (req, res) => {
   res.json({
     status: "success",
-    message: "HG system school payment backend is running"
+    message: "HG system school payment backend is running",
+    version: "2.0"
   });
 });
 
@@ -95,7 +92,8 @@ app.get("/", (req, res) => {
 
 app.get("/health", (req, res) => {
   res.json({
-    status: "ok"
+    status: "ok",
+    service: "HG system school payment"
   });
 });
 
@@ -120,7 +118,9 @@ app.post("/verify-student", (req, res) => {
     const student = students.find(
       (item) =>
         item.id.toLowerCase() ===
-          String(student_id).trim().toLowerCase() &&
+          String(student_id)
+            .trim()
+            .toLowerCase() &&
         item.name.trim() ===
           String(first_name).trim()
     );
@@ -135,6 +135,7 @@ app.post("/verify-student", (req, res) => {
     return res.json({
       status: "success",
       message: "Student verified successfully",
+
       student: {
         id: student.id,
         name: student.name,
@@ -143,6 +144,7 @@ app.post("/verify-student", (req, res) => {
     });
 
   } catch (error) {
+
     console.error(
       "Student verification error:",
       error
@@ -160,7 +162,9 @@ app.post("/verify-student", (req, res) => {
 ========================= */
 
 app.post("/create-checkout", async (req, res) => {
+
   try {
+
     const {
       student_id,
       first_name,
@@ -169,72 +173,85 @@ app.post("/create-checkout", async (req, res) => {
       currency
     } = req.body;
 
-    /* =========================
-       REQUIRED INFORMATION
-    ========================= */
+    /* -------------------------
+       Required fields
+    ------------------------- */
 
     if (
       !student_id ||
       !first_name ||
       !phone
     ) {
+
       return res.status(400).json({
         status: "error",
-        message: "Student information is required"
+        message:
+          "Student information is required"
       });
+
     }
 
-    /* =========================
-       VERIFY STUDENT
-    ========================= */
+    /* -------------------------
+       Find student
+    ------------------------- */
 
     const student = students.find(
       (item) =>
         item.id.toLowerCase() ===
-          String(student_id).trim().toLowerCase() &&
+          String(student_id)
+            .trim()
+            .toLowerCase() &&
         item.name.trim() ===
           String(first_name).trim()
     );
 
     if (!student) {
+
       return res.status(404).json({
         status: "error",
-        message: "Student ID or name is incorrect"
+        message:
+          "Student ID or name is incorrect"
       });
+
     }
 
-    /* =========================
-       CHECK CURRENCY
-    ========================= */
+    /* -------------------------
+       Currency
+    ------------------------- */
 
     if (currency !== "ETB") {
+
       return res.status(400).json({
         status: "error",
-        message: "Currency must be ETB"
+        message:
+          "Currency must be ETB"
       });
+
     }
 
-    /* =========================
-       PAYMENT AMOUNT
-    ========================= */
+    /* -------------------------
+       Amount
+    ------------------------- */
 
-    const paymentAmount = Number(amount);
+    const paymentAmount =
+      Number(amount);
 
     if (
       !paymentAmount ||
       paymentAmount <= 0
     ) {
+
       return res.status(400).json({
         status: "error",
-        message: "Invalid payment amount"
+        message:
+          "Invalid payment amount"
       });
+
     }
 
-    /* =========================
-       PHONE FORMAT
-       Chapa V2 requires
-       international format
-    ========================= */
+    /* -------------------------
+       Phone
+    ------------------------- */
 
     let customerPhone =
       String(phone).trim();
@@ -242,97 +259,106 @@ app.post("/create-checkout", async (req, res) => {
     if (
       customerPhone.startsWith("0")
     ) {
+
       customerPhone =
         "+251" +
         customerPhone.substring(1);
+
     }
 
-    /* =========================
-       MERCHANT REFERENCE
-
-       IMPORTANT:
-       Keep this short and unique.
-    ========================= */
+    /* -------------------------
+       Merchant Reference
+    ------------------------- */
 
     const merchantReference =
       "HG" +
       student.id +
-      Date.now().toString().slice(-10);
+      Date.now()
+        .toString()
+        .slice(-10);
 
-    /* =========================
-       CHECK SECRET KEY
-    ========================= */
+    /* -------------------------
+       Secret Key Check
+    ------------------------- */
 
-    if (!process.env.CHAPA_SECRET_KEY) {
+    if (
+      !process.env.CHAPA_SECRET_KEY
+    ) {
+
       console.error(
         "CHAPA_SECRET_KEY is missing"
       );
 
       return res.status(500).json({
         status: "error",
-        message: "Chapa secret key is not configured"
+        message:
+          "Chapa secret key is not configured"
       });
+
     }
 
-    /* =========================
-       CHAPA V2 HOSTED CHECKOUT
-    ========================= */
+    /* -------------------------
+       Chapa API
+    ------------------------- */
 
-    const chapaResponse = await fetch(
-      "https://api.chapa.global/v2/payments/hosted",
-      {
-        method: "POST",
+    const chapaResponse =
+      await fetch(
+        "https://api.chapa.global/v2/payments/hosted",
+        {
+          method: "POST",
 
-        headers: {
-          "Authorization":
-            `Bearer ${process.env.CHAPA_SECRET_KEY}`,
+          headers: {
 
-          "Content-Type":
-            "application/json",
+            "Authorization":
+              `Bearer ${process.env.CHAPA_SECRET_KEY}`,
 
-          "Accept":
-            "application/json"
-        },
+            "Content-Type":
+              "application/json",
 
-        body: JSON.stringify({
-          amount: paymentAmount,
-
-          currency: "ETB",
-
-          merchant_reference:
-            merchantReference,
-
-          customer: {
-            first_name:
-              student.name,
-
-            last_name:
-              "Student",
-
-            phone_number:
-              customerPhone
+            "Accept":
+              "application/json"
           },
 
-          meta: {
-            student_id:
-              student.id,
+          body: JSON.stringify({
 
-            student_name:
-              student.name,
+            amount:
+              paymentAmount,
 
-            grade:
-              student.grade,
+            currency:
+              "ETB",
 
-            source:
-              "HG-system-school"
-          }
-        })
-      }
-    );
+            merchant_reference:
+              merchantReference,
 
-    /* =========================
-       READ CHAPA RESPONSE
-    ========================= */
+            customer: {
+
+              first_name:
+                student.name,
+
+              last_name:
+                "Student",
+
+              phone_number:
+                customerPhone
+            },
+
+            meta: {
+
+              student_id:
+                student.id,
+
+              student_name:
+                student.name,
+
+              grade:
+                student.grade,
+
+              source:
+                "HG-system-school"
+            }
+          })
+        }
+      );
 
     const data =
       await chapaResponse.json();
@@ -342,48 +368,56 @@ app.post("/create-checkout", async (req, res) => {
       JSON.stringify(data)
     );
 
-    /* =========================
-       CHAPA ERROR
-    ========================= */
+    /* -------------------------
+       Chapa error
+    ------------------------- */
 
     if (!chapaResponse.ok) {
-      return res.status(
-        chapaResponse.status
-      ).json({
-        status: "error",
 
-        message:
-          data?.message ||
-          data?.error?.message ||
-          "Chapa payment initialization failed",
+      return res
+        .status(chapaResponse.status)
+        .json({
 
-        chapa: data
-      });
+          status: "error",
+
+          message:
+            data?.message ||
+            data?.error?.message ||
+            "Chapa payment initialization failed",
+
+          chapa: data
+        });
+
     }
 
-    /* =========================
-       GET CHECKOUT URL
-    ========================= */
+    /* -------------------------
+       Checkout URL
+    ------------------------- */
 
     const checkoutUrl =
       data?.data?.checkout_url;
 
     if (!checkoutUrl) {
+
       return res.status(500).json({
+
         status: "error",
 
         message:
           "Chapa did not return checkout URL",
 
         chapa: data
+
       });
+
     }
 
-    /* =========================
-       SUCCESS
-    ========================= */
+    /* -------------------------
+       Send checkout URL
+    ------------------------- */
 
     return res.json({
+
       status: "success",
 
       message:
@@ -396,6 +430,7 @@ app.post("/create-checkout", async (req, res) => {
         merchantReference,
 
       student: {
+
         id:
           student.id,
 
@@ -405,6 +440,7 @@ app.post("/create-checkout", async (req, res) => {
         grade:
           student.grade
       }
+
     });
 
   } catch (error) {
@@ -415,6 +451,7 @@ app.post("/create-checkout", async (req, res) => {
     );
 
     return res.status(500).json({
+
       status: "error",
 
       message:
@@ -422,16 +459,209 @@ app.post("/create-checkout", async (req, res) => {
 
       error:
         error.message
+
     });
+
   }
+
 });
 
 /* =========================
-   START SERVER
+   VERIFY CHAPA PAYMENT
 ========================= */
 
-app.listen(PORT, () => {
-  console.log(
-    `HG system server running on port ${PORT}`
-  );
-});
+app.get(
+  "/verify-payment/:reference",
+  async (req, res) => {
+
+    try {
+
+      const {
+        reference
+      } = req.params;
+
+      /* -------------------------
+         Reference check
+      ------------------------- */
+
+      if (!reference) {
+
+        return res.status(400).json({
+
+          status: "error",
+
+          message:
+            "Payment reference is required"
+
+        });
+
+      }
+
+      /* -------------------------
+         Secret key
+      ------------------------- */
+
+      if (
+        !process.env.CHAPA_SECRET_KEY
+      ) {
+
+        console.error(
+          "CHAPA_SECRET_KEY is missing"
+        );
+
+        return res.status(500).json({
+
+          status: "error",
+
+          message:
+            "Chapa secret key is not configured"
+
+        });
+
+      }
+
+      /* -------------------------
+         Chapa verification
+      ------------------------- */
+
+      const chapaResponse =
+        await fetch(
+
+          `https://api.chapa.global/v2/payments/${encodeURIComponent(reference)}/verify`,
+
+          {
+
+            method: "GET",
+
+            headers: {
+
+              "Authorization":
+                `Bearer ${process.env.CHAPA_SECRET_KEY}`,
+
+              "Content-Type":
+                "application/json",
+
+              "Accept":
+                "application/json"
+            }
+
+          }
+
+        );
+
+      const data =
+        await chapaResponse.json();
+
+      console.log(
+        "Chapa verification:",
+        JSON.stringify(data)
+      );
+
+      /* -------------------------
+         Chapa error
+      ------------------------- */
+
+      if (!chapaResponse.ok) {
+
+        return res
+          .status(chapaResponse.status)
+          .json({
+
+            status: "error",
+
+            message:
+              data?.message ||
+              "Payment verification failed",
+
+            chapa:
+              data
+
+          });
+
+      }
+
+      /* -------------------------
+         Payment data
+      ------------------------- */
+
+      const payment =
+        data?.data;
+
+      /* -------------------------
+         SUCCESS
+      ------------------------- */
+
+      if (
+        payment?.status ===
+        "success"
+      ) {
+
+        return res.json({
+
+          status: "success",
+
+          paid: true,
+
+          message:
+            "Payment verified successfully",
+
+          payment:
+            payment
+
+        });
+
+      }
+
+      /* -------------------------
+         NOT PAID
+      ------------------------- */
+
+      return res.json({
+
+        status: "success",
+
+        paid: false,
+
+        message:
+          "Payment is not successful",
+
+        payment:
+          payment
+
+      });
+
+    } catch (error) {
+
+      console.error(
+        "Payment verification error:",
+        error
+      );
+
+      return res.status(500).json({
+
+        status: "error",
+
+        message:
+          "Server error while verifying payment"
+
+      });
+
+    }
+
+  }
+);
+
+/* =========================
+   SERVER
+========================= */
+
+app.listen(
+  PORT,
+  () => {
+
+    console.log(
+      `HG system server running on port ${PORT}`
+    );
+
+  }
+);
